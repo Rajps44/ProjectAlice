@@ -12,10 +12,8 @@
 #  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 #  GNU General Public License for more details.
 #
-#  You should have received a copy of the GNU General Public License
-#  along with this program.  If not, see <https://www.gnu.org/licenses/>
-#
-#  Last modified: 2021.04.13 at 12:56:47 CEST
+#  Last modified: 2026.05.02 by Zoya (Ollama Integration)
+
 import hashlib
 import shutil
 import threading
@@ -110,6 +108,91 @@ class NluManager(Manager):
 
 	def startOffshoreTraining(self, dataset: dict):
 		self.logInfo('Asking offshore NLU trainer')
+		self._offshoreRespondTimer = self.ThreadManager.newTimer(interval=5, func=self.offshoreTrainerFailedResponding)
+
+		self.MqttManager.publish(
+			topic=constants.TOPIC_NLU_TRAINER_TRAIN,
+			payload={
+				'data': dataset,
+				'language': self._nluEngine.getLanguage()
+			}
+		)
+
+
+	def offshoreTrainerFailedResponding(self):
+		self.offshoreTrainerRefusedFailed('No response from offshore trainer')
+		self.logInfo('Start local training')
+		self.trainNLU(forceLocalTraining=True)
+
+
+
+	def checkEngine(self) -> bool:
+		if not Path(self.Commons.rootDir(), 'assistant/nlu_engine').exists():
+			if Path(self.Commons.rootDir(), f'trained/assistants/{self.LanguageManager.activeLanguage}/nlu_engine').exists():
+				self.AssistantManager.linkAssistant()
+				return True
+			else:
+				return False
+		else:
+			return True
+
+
+	def selectNluEngine(self):
+		if self._nluEngine:
+			self._nluEngine.stop()
+
+		engine_name = self.ConfigManager.getAliceConfigByName('nluEngine')
+
+		if engine_name == 'snips':
+			from core.nlu.model.SnipsNlu import SnipsNlu
+			self._nluEngine = SnipsNlu()
+		
+		# --- MODIFICATION BY ZOYA START ---
+		elif engine_name == 'ollama':
+			from core.nlu.model.OllamaNlu import OllamaNlu
+			self._nluEngine = OllamaNlu()
+		# --- MODIFICATION BY ZOYA END ---
+		
+		else:
+			self.logFatal(f'Unsupported NLU engine: {engine_name}')
+			self.ProjectAlice.onStop()
+
+
+	def buildTrainingData(self):
+		self.clearCache()
+		self._nluEngine.convertDialogTemplate(self.DialogTemplateManager.pathToData)
+
+
+	def train(self):
+		self.buildTrainingData()
+		self.trainNLU()
+
+
+	def trainNLU(self, forceLocalTraining: bool = False):
+		self._nluEngine.train(forceLocalTraining=forceLocalTraining)
+
+
+	def clearCache(self):
+		shutil.rmtree(self._pathToCache)
+		self._pathToCache.mkdir()
+
+
+	@property
+	def training(self) -> bool:
+		return self._training
+
+
+	@training.setter
+	def training(self, value: bool):
+		self._training = value
+
+		if not value:
+			self.StateManager.setState('projectalice.core.training', newState=StateType.FINISHED)
+
+
+	@property
+	def nluEngine(self) -> NluEngine:
+		return self._nluEngine
 		self._offshoreRespondTimer = self.ThreadManager.newTimer(interval=5, func=self.offshoreTrainerFailedResponding)
 
 		self.MqttManager.publish(
