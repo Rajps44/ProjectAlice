@@ -140,12 +140,13 @@ class NluManager(Manager):
 		if engine_name == 'snips':
 			from core.nlu.model.SnipsNlu import SnipsNlu
 			self._nluEngine = SnipsNlu()
+			self.logInfo("NLU Engine set to: Snips")
 		
-		# --- ZOYA INTEGRATION START ---
 		elif engine_name == 'ollama':
+			# Zoya's DeepSeek/Llama Engine
 			from core.nlu.model.OllamaNlu import OllamaNlu
 			self._nluEngine = OllamaNlu()
-		# --- ZOYA INTEGRATION END ---
+			self.logInfo("NLU Engine set to: Zoya (Ollama)")
 		
 		else:
 			self.logFatal(f'Unsupported NLU engine: {engine_name}')
@@ -187,4 +188,4 @@ class NluManager(Manager):
 	@property
 	def nluEngine(self) -> NluEngine:
 		return self._nluEngine
-	
+		
